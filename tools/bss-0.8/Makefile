@@ -4,7 +4,7 @@
 
 CC=gcc
 MAKE=make
-CFLAGS=-Wall
+CFLAGS=-Wall -g -O0
 
 BINDIR=/usr/local/bin
 ETCDIR=/usr/local/etc
@@ -22,9 +22,9 @@ BSS_LIBS=-lbluetooth
 all: $(BSS_OBJ)
 
 $(BSS_OBJ): $(BSS_SRC) $(BSS_INC)
-	$(CC) -c $(BSS_SRC) 
-	$(CC) -c $(L2P_SRC)
-	$(CC) -c $(REP_SRC)
+	$(CC) $(CFLAGS) -c $(BSS_SRC)
+	$(CC) $(CFLAGS) -c $(L2P_SRC)
+	$(CC) $(CFLAGS) -c $(REP_SRC)
 	$(CC) $(BSS_TMP) $(L2P_TMP) $(REP_TMP) -o $(BSS_OBJ) $(CFLAGS) $(BSS_FLAGS) $(BSS_LIBS)
 
 install:
