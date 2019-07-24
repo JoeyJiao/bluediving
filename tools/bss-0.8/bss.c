@@ -626,7 +626,7 @@ recoverl2fuzz:
 // takes	: bluetooth address, maximum size, maximum number of crashes
 // returns	: nothing
 // --------------------------------------------------------------------
-void rfcfuzz(char *bdstr_addr, int maxsize, int maxcrash) {
+void rfcfuzz(char *bdstr_addr, int maxsize, int maxcrash, int ch) {
   char *buf, *savedbuf;
   struct sockaddr_rc addr;
   int sock, i, size;
@@ -661,7 +661,7 @@ recoverrfcfuzz:
 
   memset(&addr, 0, sizeof(addr));
   addr.rc_family = AF_BLUETOOTH;
-  addr.rc_channel = (uint8_t)6;
+  addr.rc_channel = (uint8_t)ch;
   bacpy(&addr.rc_bdaddr, &local_bdaddr);
   if (vdebug)
     fprintf(stdout, "[d] bss: binding socket\n");
@@ -686,6 +686,7 @@ recoverrfcfuzz:
 
     memset(&addr, 0, sizeof(addr));
     addr.rc_family = AF_BLUETOOTH;
+    addr.rc_channel = (uint8_t)ch;
     str2ba(bdstr_addr, &addr.rc_bdaddr);
 
     // bring up the connection to the device
@@ -966,8 +967,8 @@ recoverl2fuzzhdr:
   //{
   //	if(!l2ping(bdstr_addr,vdebug,dontstop)){
   //		fprintf(stdout, "[!] bss: l2ping returned that the host is
-  //down!\n"); 		if(shutnop) deadstop=1; 	}else{ 		if (!silent) fprintf(stdout, "[*]
-  //bss: l2ping returned that the host is up!\n");
+  // down!\n"); 		if(shutnop) deadstop=1; 	}else{ 		if (!silent)
+  // fprintf(stdout, "[*] bss: l2ping returned that the host is up!\n");
   //	}
   //}
 
@@ -1255,6 +1256,7 @@ int banner(int mode) {
 // ---------------------------------------------------------------------
 int main(int argc, char **argv) {
   int i, siz = 0, mode = 0, maxcrash = 1;
+  int ch = 6;
   char bdaddr[20], pad = 0;
 
   if (!banner(1)) {
@@ -1301,6 +1303,9 @@ int main(int argc, char **argv) {
         usage(argv[0]);
 
       if (!memcmp(argv[i], "-d", 2) && (pdelay = atoi(argv[++i])) < 0)
+        usage(argv[0]);
+
+      if (!memcmp(argv[i], "-a", 2) && (ch = atoi(argv[++i])) < 0)
         usage(argv[0]);
 
       if (!memcmp(argv[i], "-c", 2) && (dontstop == 0)) {
@@ -1366,7 +1371,7 @@ int main(int argc, char **argv) {
 
     if (mode == 14) {
       fprintf(stdout, "[*] RFCOMM fuzz: on\n");
-      rfcfuzz(bdaddr, siz ? siz : MAXSIZE, maxcrash);
+      rfcfuzz(bdaddr, siz ? siz : MAXSIZE, maxcrash, ch);
     }
   }
 
