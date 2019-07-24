@@ -1,21 +1,21 @@
 /*
  * BSS: Bluetooth Stack Smasher
- * This tool intends to perform several tests on the L2CAP layer 
+ * This tool intends to perform several tests on the L2CAP layer
  * of the bluetooth protocol.
  *
  * Pierre BETOUIN <pierre.betouin@security-labs.org>
- * 
- * You may need to install the libbluetooth (-dev) first. 
+ *
+ * You may need to install the libbluetooth (-dev) first.
  * Debian : apt-get install libbluetooth1-dev
  *
  * Copyright (C) 2006 Pierre BETOUIN
- * 
+ *
  * Written 2006 by Pierre BETOUIN <pierre.betouin@security-labs.org>
- * 
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation;
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF THIRD PARTY
@@ -24,7 +24,7 @@
  * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
  * AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- * 
+ *
  * ALL LIABILITY, INCLUDING LIABILITY FOR INFRINGEMENT OF ANY PATENTS,
  * COPYRIGHTS, TRADEMARKS OR OTHER RIGHTS, RELATING TO USE OF THIS SOFTWARE
  * IS DISCLAIMED.
@@ -43,6 +43,7 @@
 #include <bluetooth/hci_lib.h>
 #include <bluetooth/l2cap.h>
 #include <bluetooth/sdp.h>
+#include <bluetooth/rfcomm.h>
 #include <asm/byteorder.h>
 #include <time.h>
 #include "l2ping.h"
@@ -99,7 +100,7 @@ int genreplay(char *payload, int savedsize)
 	tm  = time(NULL);
 	ptr = (void *) localtime(&tm);
 	strftime(strOutFile ,240 , "replay_packet/replay_l2cap_packet_%d%m%Y%H%M%S.",ptr);
-	snprintf(strTemp,5,"%d",filecnt); 
+	snprintf(strTemp,5,"%d",filecnt);
 	strcat(strOutFile,strTemp);
 	strcat(strOutFile,".c");
 	
@@ -198,7 +199,7 @@ void sdpdos(char *bdstraddr){
 // --------------------------------------------------------------------
 // function 	: l2dos
 // role 	: perform random DoS attempts against known l2cap types
-// takes	: src & dost bluetooth addresses , l2cap option number, 
+// takes	: src & dost bluetooth addresses , l2cap option number,
 // 		  size, padding byte
 // returns	: nothing
 // ---------------------------------------------------------------------
@@ -251,12 +252,12 @@ recoverl2dos:
 	str2ba(bdstr_addr, &addr.l2_bdaddr);
 
 	if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		if (dontstop) { 
+		if (dontstop) {
 			if (silent) fprintf(stdout,"\n");
 			perror("[!] bss: can't connect.");
 			if (vdebug) fprintf (stdout,"[!] bss: couldn't connect\n");
 			if (vdebug) fprintf(stdout,"[d] bss: jumping to recoverl2dos\n");
-			goto recoverl2dos;  
+			goto recoverl2dos;
 		} else {
 			if (silent) fprintf(stdout,"\n");
 			perror("[!] bss: can't connect.");
@@ -283,7 +284,7 @@ recoverl2dos:
 		usleep(pdelay*1000);
 		cmd = (l2cap_cmd_hdr *) buf;
 		cmd->code = cmdnum;
-		cmd->ident = (i%250) + 1;		// Identificator 
+		cmd->ident = (i%250) + 1;		// Identificator
 		cmd->len = __cpu_to_le16(LENGTH);	/* trick found into tanya tool (tbear) */
 
 		if (!vdebug) fprintf(stdout,".");
@@ -362,7 +363,7 @@ void l2fuzz(char *bdstr_addr, int maxsize, int maxcrash)
 
 
 	fprintf(stdout, "[i] performing full random L2CAP fuzzing, take a seat and crack open a beer...\n");
-	
+
 	if(noping == 0)
 	{
 		// if Debugging is turned on just check the host is actually responding to l2cap pings
@@ -430,7 +431,7 @@ recoverl2fuzz:
 
 		// build random fuzz packet
 		size=rand() % maxsize;
-		if(size == 0) 
+		if(size == 0)
 			size=1;
 		if (vdebug) fprintf(stdout,"[d] malloc'ing buf\n");
 		if(!(buf = (char *) malloc ((int) size + 1))) {
@@ -443,7 +444,7 @@ recoverl2fuzz:
 			buf[i] = (char) rand();
 		}
 		
-		if( !vdebug ) 
+		if( !vdebug )
 		{
 			putchar('.');
 			fflush(stdout);
@@ -542,7 +543,7 @@ recoverl2fuzz:
                         	fprintf(stdout, "[d] packet size\t\t%d\n", sndsize);
                         	fprintf(stdout, "[d] ----------------------------------------------------\n");
 	                        for(i=0 ; i<sndsize ; i++)
-	                        {       
+	                        {
 	                                fprintf(stdout, "%.2X ", (unsigned char) buf[i]);
 	                        }
 	                        //fprintf(stdout, "\";\n");
@@ -561,9 +562,232 @@ recoverl2fuzz:
 
 		// Be tidy
 		if (vdebug) fprintf(stdout,"[d] bss: closing socket\n");
-		close(sock); 
+		close(sock);
 		if (vdebug) fprintf(stdout,"[d] bss: jumping to recoverl2fuzz\n");
 		goto recoverl2fuzz;
+	}
+}
+
+// --------------------------------------------------------------------
+// function	: rfcfuzz
+// role		: sends random() packets via rfcomm to device
+// takes	: bluetooth address, maximum size, maximum number of crashes
+// returns	: nothing
+// --------------------------------------------------------------------
+void rfcfuzz(char *bdstr_addr, int maxsize, int maxcrash)
+{
+	char *buf, *savedbuf;
+	struct sockaddr_rc addr;
+	int sock, i, size;
+	int crash_count=0, savedsize;
+	int deadstop=0;
+	int sndsize=0;
+
+
+	fprintf(stdout, "[i] performing full random RFCOMM fuzzing, take a seat and crack open a beer...\n");
+
+	if(noping == 0)
+	{
+		// if Debugging is turned on just check the host is actually responding to l2cap pings
+		if(vdebug){
+			if(!l2ping(bdstr_addr,vdebug,dontstop)){
+				fprintf(stdout, "[d] [!] bss: (entry to rfcfuzz) l2ping returned that the host is down!\n");
+			}else{
+				fprintf(stdout, "[d] [*] bss: (entry to rfcfuzz) l2ping returned that the host is up!\n");
+			}
+		}
+	}
+
+recoverrfcfuzz:
+	if (vdebug) fprintf(stdout,"[d] bss: creating socket\n");
+	if ((sock = socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM)) < 0) {
+		perror("[!] bss: can't create socket.");
+		exit(EXIT_FAILURE);
+	}
+
+
+  memset(&addr, 0, sizeof(addr));
+	addr.rc_family = AF_BLUETOOTH;
+  addr.rc_channel = (uint8_t) 6;
+	bacpy(&addr.rc_bdaddr, &local_bdaddr);
+	if (vdebug) fprintf(stdout,"[d] bss: binding socket\n");
+	if (bind(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		perror("[!] bss: can't bind socket");
+		exit(EXIT_FAILURE);
+	}
+
+	str2ba(bdstr_addr, &addr.rc_bdaddr);
+
+	if (vdebug) fprintf(stdout,"[d] bss: malloc'ing savedbuf\n");
+	if(!(savedbuf = (char *) malloc ((int) maxsize + 1))) {
+		perror("[!] bss: bss: can't malloc.");
+		exit(EXIT_FAILURE);
+	}
+
+	while(1)		// Initite loop (ctrl-c to stop...)
+	{
+
+		usleep(pdelay*1000);
+
+		memset(&addr, 0, sizeof(addr));
+        	addr.rc_family = AF_BLUETOOTH;
+		str2ba(bdstr_addr, &addr.rc_bdaddr);
+
+		// bring up the connection to the device
+		if (vdebug) fprintf(stdout,"[d] bss: connecting\n");
+		if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+			if (dontstop) {
+				if (silent) fprintf(stdout,"\n");
+				perror("[!] bss: can't connect.");
+				if (vdebug) fprintf(stdout,"[!] bss: couldn't connect.\n");
+				if (vdebug) fprintf(stdout,"[d] bss: jumping to recoverrfcfuzz\n");
+				goto recoverrfcfuzz;	
+			} else {
+				if (silent) fprintf(stdout,"\n");
+				perror("[!] bss: can't connect.");
+				exit(EXIT_FAILURE);
+			}
+		} else {
+			if(vdebug) fprintf(stdout,"[d] bss: connected\n");
+		}
+
+
+		// build random fuzz packet
+		size=rand() % maxsize;
+		if(size == 0)
+			size=1;
+		if (vdebug) fprintf(stdout,"[d] malloc'ing buf\n");
+		if(!(buf = (char *) malloc ((int) size + 1))) {
+			perror("[!] bss: couldn't malloc");
+			exit(EXIT_FAILURE);
+		}
+
+		bzero(buf, size);
+		for(i=0 ; i<size ; i++)	{
+			buf[i] = (char) rand();
+		}
+
+		if( !vdebug )
+		{
+			putchar('.');
+			fflush(stdout);
+		}
+
+		// do it now ! :)
+		sndsize=send(sock, buf, size, 0);
+
+		if(sndsize <= 0)
+		{
+			if(vdebug) fprintf(stdout,"[d] bss: send size was <= 0\n");
+			// Now we check after each sending failure if the host is still responding the pings
+			if((!silent) && (!vdebug)) fprintf(stdout,"\n");
+			if(noping == 0)
+			{
+				if(!l2ping(bdstr_addr,vdebug,dontstop)){
+					if(silent) fprintf(stdout,"\n");
+					fprintf(stdout, "[!] bss: l2ping returned that the host is down!\n");
+					if(shutnop) deadstop=1;
+					crash_count++;
+				}else{
+					if(!silent) fprintf(stdout, "[*] bss: l2ping returned that the host is up!\n");
+				}
+			}
+
+
+			// if it's not runnning in client mode or a bug was detected while -x was supplied
+			if((!silent) || (deadstop)){
+				if(noping == 0)
+				{
+					fprintf(stdout, "[i] bss: potential crash detected for %s, check l2ping response above\n",bdstr_addr);
+				}
+				else
+				{
+					fprintf(stdout, "[i] bss: potential crash detected for %s, check with an inquiry scan\n",bdstr_addr);
+				}
+
+				fprintf(stdout, "[i] ----------------------------------------------------\n");
+				fprintf(stdout, "[i] host\t\t%s\n", bdstr_addr);
+				fprintf(stdout, "[i] packet size\t\t%d\n", savedsize);
+ 				fprintf(stdout, "[i] ----------------------------------------------------\n");
+				fprintf(stdout, "[i] replay buffer:\n\t");
+
+				fprintf(stdout, "char replay_buggy_packet[]=\"");
+				// dump the offending packet
+				for(i=0 ; i<savedsize ; i++)
+				{
+					fprintf(stdout, "\\x%.2X", (unsigned char) savedbuf[i]);
+				}
+				fprintf(stdout, "\";\n");
+				fprintf(stdout, "\n[i]----------------------------------------------------\n");
+			} else {
+				fprintf(stdout,"!");
+			}
+
+
+			// if file generation is on
+			if (filegen) {
+				// if told to close on crash and crash is detect OR if not told to close on crash
+				if ( ((shutnop) && (deadstop)) || (!shutnop) ) {
+					if (vdebug) fprintf(stdout,"[d] generating replay_packet\n");
+					if (genreplay(savedbuf,savedsize) == 0){
+						if (!silent) fprintf(stdout,"[i] generated replay_packet ok!\n");
+						if (silent) fprintf(stdout,"G");
+					} else {
+						if (!silent) fprintf(stdout,"[!] error generating replay file\n");
+					}
+				}
+			}
+
+			// check we aint maxed out
+			if((crash_count == maxcrash) && (maxcrash > 0))
+			{
+				fprintf(stdout,"[i] max crash count hit\n");
+
+				if (vdebug) fprintf(stdout,"[d] free'ing buf\n");
+				free(buf);
+				if (vdebug) fprintf(stdout,"[d] free'ing savedbuf\n");
+				free(savedbuf);
+				exit(EXIT_SUCCESS);
+			}
+
+			// if we've been told to stop on an error
+			if(deadstop){
+				fprintf(stdout,"[!] shutting down due to use of -x option - hosts rfcomm stack in stack\n");
+				exit(EXIT_SUCCESS);
+			}
+
+		} else { // we sent some data
+			if(vdebug) fprintf(stdout,"[d] send size was > 0\n");
+			if((vdebug) && (!silent)){
+				if(vdebug) fprintf(stdout,"\n");
+				fprintf(stdout, "[d] debug packet dump\n");
+				fprintf(stdout, "[d] ----------------------------------------------------\n");
+                        	fprintf(stdout, "[d] host\t\t%s\n", bdstr_addr);
+                        	fprintf(stdout, "[d] packet size\t\t%d\n", sndsize);
+                        	fprintf(stdout, "[d] ----------------------------------------------------\n");
+	                        for(i=0 ; i<sndsize ; i++)
+	                        {
+	                                fprintf(stdout, "%.2X ", (unsigned char) buf[i]);
+	                        }
+	                        //fprintf(stdout, "\";\n");
+	                        fprintf(stdout, "\n[d]----------------------------------------------------\n");
+			}
+		}
+
+		memcpy(savedbuf, buf, size);	// Get the previous packet, not this one...
+		savedsize = size;
+		if (vdebug) fprintf(stdout,"[d] bss: free'ing buf\n");
+		free(buf);
+		if(savedbuf!=NULL) {
+			if (vdebug) fprintf(stdout,"[d] bss: free'ing savedbuf\n");
+			free(savedbuf);
+		}
+
+		// Be tidy
+		if (vdebug) fprintf(stdout,"[d] bss: closing socket\n");
+		close(sock);
+		if (vdebug) fprintf(stdout,"[d] bss: jumping to recoverl2fuzz\n");
+		goto recoverrfcfuzz;
 	}
 }
 
@@ -636,11 +860,11 @@ recoverl2fuzzhdr:
 	str2ba(bdstr_addr, &addr.l2_bdaddr);
 
 	if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		if (dontstop) { 
+		if (dontstop) {
 			if (silent) fprintf(stdout,"\n");
 			perror("[!] bss: can't connect.");
 			if (vdebug) fprintf (stdout,"[!] bss: couldn't connect . jumping to recoverl2fuzzhdr\n");
-			goto recoverl2fuzzhdr;  
+			goto recoverl2fuzzhdr;
 		} else {
 			if (silent) fprintf(stdout,"\n");
 			perror("[!] bss: can't connect.");
@@ -671,7 +895,7 @@ recoverl2fuzzhdr:
 				usleep(pdelay*1000);
 				cmd = (l2cap_cmd_hdr *) buf;
 				cmd->code = code;
-				cmd->ident = id;		// Identificator 
+				cmd->ident = id;		// Identificator
 				cmd->len = __cpu_to_le16(len);	/* trick found into tanya tool (tbear) */
 			
 
@@ -688,7 +912,7 @@ recoverl2fuzzhdr:
 						if(!l2ping(bdstr_addr,vdebug,dontstop)){
 							fprintf(stdout, "[!] bss: l2ping returned that the host is down!\n");
 							if(shutnop) deadstop=1;
-							goto recoverl2fuzzhdr; 
+							goto recoverl2fuzzhdr;
 						}else{
 							if (!silent) fprintf(stdout, "[*] bss: l2ping returned that the host is up!\n");
 						}
@@ -735,8 +959,8 @@ recoverl2fuzzhdr:
 							{
 								if (!silent) fprintf(stdout,"[d] generated ok!\n");
 								if (silent) fprintf(stdout,"G");
-							} 
-							else 
+							}
+							else
 							{
 								if (!silent) fprintf(stdout,"[!] error generating replay file\n");
 							}
@@ -757,7 +981,7 @@ recoverl2fuzzhdr:
 					len_saved = len;
 					memcpy(savedbuf, buf, L2CAP_CMD_HDR_SIZE+payload_size);
 
-					if(vdebug) 
+					if(vdebug)
 					{
 						fprintf(stdout, "[d] debug packet dump\n");
 						fprintf(stdout, "[d] ----------------------------------------------------\n");
@@ -769,7 +993,7 @@ recoverl2fuzzhdr:
 						fprintf(stdout, "[d] payload padding\t\'%c\'\n", pad);
 						fprintf(stdout, "[d] ----------------------------------------------------\n");
 						for(i=0 ; i<sndsize ; i++)
-						{       
+						{
 							fprintf(stdout, "%.2X ", (unsigned char) buf[i]);
 						}
 						fprintf(stdout, "\n[d]----------------------------------------------------\n");
@@ -788,7 +1012,7 @@ recoverl2fuzzhdr:
 // --------------------------------------------------------------------
 // function 	: usage
 // role 	: print usage information
-// takes	: tool name 
+// takes	: tool name
 // returns	: EXIT_FAILURE
 // ---------------------------------------------------------------------
 int usage(char *name)
@@ -822,7 +1046,9 @@ int usage(char *name)
 	10 L2CAP_INFO_REQ\n	\
 	11 L2CAP_INFO_RSP\n	\
 	12 L2CAP full header fuzzing (-s : payload size) [%d tests]\n	\
-	13 L2CAP Random Fuzzing (infinite loop: break with ctrl-c)\n\n", MAX_L2CAP_FIELDS*MAX_L2CAP_FIELDS*SIZE_L2HEADER);	
+	13 L2CAP Random Fuzzing (infinite loop: break with ctrl-c)\n \
+  14 RFCOMM\n\n",
+  MAX_L2CAP_FIELDS*MAX_L2CAP_FIELDS*SIZE_L2HEADER);
 	exit(EXIT_FAILURE);
 }
 
@@ -926,7 +1152,7 @@ int main(int argc, char **argv)
 	if(!banner(1)){
 		fprintf(stdout,"[!] Something went very wrong with banner()\n");
 	}
-	
+
 	char *src_bdaddr=NULL;
 
 	int pouet=100;
@@ -938,12 +1164,12 @@ int main(int argc, char **argv)
 	}
 
 	bacpy(&local_bdaddr, BDADDR_ANY);
-	
+
 	if(argc < 2 || argc > 18)
 	{
 		usage(argv[0]);
 	}
-	
+
 	for(i = 0; i < argc; i++)
 	{
 		if(strchr(argv[i], ':'))
@@ -952,19 +1178,19 @@ int main(int argc, char **argv)
 		{
 		if(!memcmp(argv[i], "-i", 2) && (pouet=hci_devba(atoi(argv[++i]+3), &local_bdaddr)) < 0)
 			usage(argv[0]);
-					
+
 		if(!memcmp(argv[i], "-S", 2) && (src_bdaddr = argv[++i]) < 0)
 			usage(argv[0]);
-			
+
 		if(!memcmp(argv[i], "-s", 2) && (siz = atoi(argv[++i])) < 0)
 			usage(argv[0]);
-		
+
 		if(!memcmp(argv[i], "-m", 2) && (mode = atoi(argv[++i])) < 0)
 			usage(argv[0]);
-		
+
 		if(!memcmp(argv[i], "-p", 2) && (pad = (*argv[++i])) < 0)
 			usage(argv[0]);
-		
+
 		if(!memcmp(argv[i], "-M", 2) && (maxcrash = atoi(argv[++i])) < 0)
 			usage(argv[0]);
 
@@ -980,7 +1206,7 @@ int main(int argc, char **argv)
 			fprintf(stdout,"[*] Debugging: on\n");
 			vdebug=1;
 		}
-				
+
 		if(!memcmp(argv[i], "-x",2) && (shutnop == 0)) {
 		        fprintf(stdout,"[*] Exit on no response to l2ping: on\n");
 		        shutnop=1;
@@ -995,17 +1221,17 @@ int main(int argc, char **argv)
 		        fprintf(stdout,"[*] Silent mode: on\n");
 		        silent=1;
 		}
-			
-    	        if(!memcmp(argv[i], "-o",2) && (filegen == 0)) {
+
+		if(!memcmp(argv[i], "-o",2) && (filegen == 0)) {
 		        fprintf(stdout,"[*] Automatic replay_packet.c generation: on\n");
 		        filegen=1;
 		fprintf(stdout,"[*] All test cases\n");
 		}
-		
+
 		}
 	}
 
-	if(mode > 13)
+	if(mode > 14)
 	{
 		usage(argv[0]);
 		exit(EXIT_FAILURE);
@@ -1014,8 +1240,8 @@ int main(int argc, char **argv)
 	if(mode == 0)
 	{
 		/* L2CAP modes from 0 to 0x0b */
-		for(i=1; i <= 0x0b; i++) 
-			l2dos(src_bdaddr, bdaddr, i, siz?siz:MAXSIZE, pad);	
+		for(i=1; i <= 0x0b; i++)
+			l2dos(src_bdaddr, bdaddr, i, siz?siz:MAXSIZE, pad);
 		l2fuzz_header(bdaddr, siz?siz:MAXSIZE, pad);
 		l2fuzz(bdaddr, siz?siz:MAXSIZE, maxcrash);
 	}
@@ -1035,13 +1261,18 @@ int main(int argc, char **argv)
 			fprintf(stdout,"[*] L2FUZZ random fuzz mode: on\n");
 			l2fuzz(bdaddr, siz?siz:MAXSIZE, maxcrash);
 		}
+
+    if(mode == 14) {
+      fprintf(stdout, "[*] RFCOMM fuzz: on\n");
+      rfcfuzz(bdaddr, siz?siz:MAXSIZE, maxcrash);
+    }
 	}
-	
+
 	fprintf(stdout, "\n[*do a little dance*] Your bluetooth device didn't crash receiving the packets\n");
-	
+
      	if(!banner(2)){
 		fprintf(stdout,"[!] bss: something very wrong with banner()\n");
 	}
-	
+
 	return EXIT_SUCCESS;
 }
